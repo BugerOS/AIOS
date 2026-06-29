@@ -1,4 +1,4 @@
-# Prerequisites
+ # Prerequisites
 *.d
 
 # Object files
@@ -53,3 +53,16 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# 부팅용 이미지 파일
+*.iso
+*.img
+*.bin
+
+# GRUB 부팅 디렉토리 및 빌드 임시 폴더
+/iso/
+/build/
+
+# 임시 폴더
+*.bak
+*.swp
