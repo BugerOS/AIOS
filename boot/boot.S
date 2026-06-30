@@ -7,8 +7,6 @@
 # define KERNEL_STACK 0X9F000 // C언어를 위한 초기 스택 포인터 위치
 
 .code32 // GRUB가 처음 AIOS를 실행했을 때는 32bit privileged mode일 것
-.file "boot.S"
-.arch generic64
 
 .section .multiboot // 아래의 데이터들을 .multiboot section에 따로 보관
 .align 4 // 4 byte 단위로 정렬
@@ -18,7 +16,6 @@
 
 .section .text // 여기부터는 진짜 기계어 명령들
 .global start
-.global set_up_paging
 
 start:
     // hw interrupt 차단
@@ -36,6 +33,13 @@ start:
     orl $(1 << 8), %eax
     wrmsr // msr 값을 덮어씀
 
+    // CR3에 page table 등록
+    movl $PAGE_TABLE_BASE, %eax
+    movl %eax, %cr3
+
+    // 임시 GDT 세팅
+    lgdt gdt_ptr
+
     // CR0 레지스터의 paging bit 킴 -> 64 bit 가동
     movl %cr0, %eax
     orl $(1 <<31), %eax
@@ -43,6 +47,12 @@ start:
 
     // C언어로 작성될 kernel의 본체를 호출
     // .global kernel_main이 들어올 자리
+    // call kernel_main
+    ljmp $0x08, $start_64
+
+.code64
+start_64:
+    // 여기부터는 64bit long mode -> C언어로 된 kernel 안전하게 호출 가능
     call kernel_main
 
 // kernel이 종료되면 cpu를 정지(halt)
@@ -50,6 +60,7 @@ _halt:
     hlt
     jmp _halt
 
+.code32
 // 페이징 세팅 함수
 // 2MB 대형 page 512개를 물리 메모리 1GB에 하이패스로 매핑
 set_up_paging:
@@ -62,7 +73,7 @@ set_up_paging:
     // PML4T(0x900)가 다음 단계인 PDPT(0XA000)를 가리키도록 함
     // present + RW = 0x3
     movl $((PAGE_TABLE_BASE + 0X1000) | 3), (PAGE_TABLE_BASE)
-
+    
     // PDPT(0xA00)가 다음 단계인 PDT(0XB000)를 가리키도록 함
     // present + RW = 0x3
     movl $((PAGE_TABLE_BASE + 0X2000) | 3), (PAGE_TABLE_BASE + 0X1000)
@@ -80,12 +91,30 @@ set_up_paging:
     loop .set_pdt_loop // counter인 %ecx를 1 감소하고, 0이 아나라면 loop 계속, 0이면 loop 종료
 
     // 제어 레지스터 CR3에 내가 만든 최상위 테이블 주소(0X9000)를 등록
-    movl $PAGE_TABLE_BASE, %eax
-    movl %eax, %cr3
+    // movl $PAGE_TABLE_BASE, %eax
+    // movl %eax, %cr3
 
     // CR4 레지스테에서 x64 필수 조건인 PAE 비트(5번째) 활성화
     movl %cr4, %eax
     orl $(1 << 5), %eax
     movl %eax, %cr4
-
+    
     ret // 함수 호출이 끝나서 호출했던 부분으로 돌아감
+
+
+// %esp: stack pointer
+// %eax accumulator
+// $ecx: counter
+
+// CR0, CR3, CR4는 하드웨어 스위치 제어판
+
+// 64 bit 진입을 위한 하드웨어 최소 표준 제어판 (GDT)
+.align 4
+gdt_start:
+    .quad 0x0000000000000000 // null descriptor -> 없으면 안됨
+    .quad 0x00209A0000000000 // 64 bit code segment descriptor (0x08)
+gdt_end:
+
+gdt_ptr:
+    .word gdt_end - gdt_start -1
+    .long gdt_start
