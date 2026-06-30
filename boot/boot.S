@@ -15,27 +15,38 @@
     .long MULTIBOOT_CHECKSUM
 
 .section .text // 여기부터는 진짜 기계어 명령들
+.code32
+
 .global start
+.extern kernel_main
 
 start:
     // hw interrupt 차단
     cli
 
+    // 문자열 명령의 진행 방향은 정방향
+    cld
+
     // C언어를 위한 임시 stack 세팅
-    movl $KERNEL_STACK, %esp
+    movl $stack_top, %esp
 
     // 4단계 paging 하드웨어 세팅 함수 호출
     call set_up_paging
+
+    // CR4 레지스터에서 PAE 비트(5번재)를 선제 활성화
+    movl %cr4, %eax
+    orl $(1 << 5), %eax
+    movl %eax, %cr4
+
+    // 최상위 페이지 디렉토리 주소를 cr3에 등록
+    movl $PAGE_TABLE_BASE, %eax
+    movl %eax, %cr3
 
     //MSR(특수 register)을 조작해서 64 bit 롱 모드(EFER.LME) 활성화
     movl $0xC0000080, %ecx
     rdmsr // read msr(model specific register)
     orl $(1 << 8), %eax
     wrmsr // msr 값을 덮어씀
-
-    // CR3에 page table 등록
-    movl $PAGE_TABLE_BASE, %eax
-    movl %eax, %cr3
 
     // 임시 GDT 세팅
     lgdt gdt_ptr
@@ -53,12 +64,34 @@ start:
 .code64
 start_64:
     // 여기부터는 64bit long mode -> C언어로 된 kernel 안전하게 호출 가능
+    // 데이터 세그먼트 selector 0x10 설정
+    movw $0x10, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %ss
+
+    // fs와 gs는 현재 사용 x -> null selector
+    xorw %ax, %ax
+    movw %ax, %fs
+    movw %ax, %gs
+    // 64비트 rsp를 실제 커널 스택 끝으로 설정
+    // rsp: register stack pointer
+    leaq stack_top(%rip), %rsp
+
+    // c abi를 위해서 스택을 16 바이트로 정렬
+    andq $-16, %rsp
+
+    // 초기 frame pointer는 0
+    xorq %rbp, %rbp
+
     call kernel_main
 
-// kernel이 종료되면 cpu를 정지(halt)
-_halt:
+// kerenel main은 정상적응로 return x
+// -> return하게 되면 cpu 정지
+.kernel_returned:
+    cli
     hlt
-    jmp _halt
+    jmp .kernel_returned
 
 .code32
 // 페이징 세팅 함수
@@ -67,6 +100,8 @@ set_up_paging:
     movl $PAGE_TABLE_BASE, %edi
     movl $4096, %ecx
     xorl %eax, %eax
+    cld
+
     // xorl: 32비트 크기로 XOR(배타적 논리합) 비트 연산을 수행
     rep stosl // 0x9000 ~ 0xD000 영역을 0으로 초기화
 
@@ -86,6 +121,7 @@ set_up_paging:
 
 .set_pdt_loop:
     movl %ebx, (%edi) //(%edi)는 pointer라고 생각
+    movl $0, 4(%edi) //페이지 엔트리 상위 32비트는 0
     addl $0x200000, %ebx // 다음 물리 주소 경계로 2MB 점프(띄우기)
     addl $8, %edi // 64 bit entry 주소 -> 8 byte 씩 이동
     loop .set_pdt_loop // counter인 %ecx를 1 감소하고, 0이 아나라면 loop 계속, 0이면 loop 종료
@@ -95,9 +131,9 @@ set_up_paging:
     // movl %eax, %cr3
 
     // CR4 레지스테에서 x64 필수 조건인 PAE 비트(5번째) 활성화
-    movl %cr4, %eax
-    orl $(1 << 5), %eax
-    movl %eax, %cr4
+    // movl %cr4, %eax
+    // orl $(1 << 5), %eax
+    // movl %eax, %cr4
     
     ret // 함수 호출이 끝나서 호출했던 부분으로 돌아감
 
@@ -109,12 +145,27 @@ set_up_paging:
 // CR0, CR3, CR4는 하드웨어 스위치 제어판
 
 // 64 bit 진입을 위한 하드웨어 최소 표준 제어판 (GDT)
-.align 4
+.align 8
 gdt_start:
     .quad 0x0000000000000000 // null descriptor -> 없으면 안됨
-    .quad 0x00209A0000000000 // 64 bit code segment descriptor (0x08)
+    .quad 0x00AF9A000000FFFF
+    .quad 0x00CF92000000FFFF
 gdt_end:
 
 gdt_ptr:
+    // gdt 크기 - 1
     .word gdt_end - gdt_start -1
+
+    //32비트에서 lgdt를 실행 -> 베이스 주소를 32비트로 기록
     .long gdt_start
+
+// 실제 커널 스택 공간
+// 32kb를 확보하고 스택은 밑으로 자람
+.section .bss
+.align 16
+
+stakc_bottom:
+    .skip 32768
+stack_top:
+
+.section .note.GNU-stack,"",@progbits

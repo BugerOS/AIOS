@@ -66,3 +66,5 @@ dkms.conf
 # 임시 폴더
 *.bak
 *.swp
+
+*.sh
