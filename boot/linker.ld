@@ -11,8 +11,9 @@ SECTIONS{
     .text : ALIGN(4096)
     {
         /* GRUB 부트로더가 커널을 인지하면 멀티부트 헤더가 무조건 맨 앞에 와야 함 */
-        *(.multiboot)
+        KEEP(*(.multiboot))
         *(.text)
+        *(.text.*)
     }
 
     /* 읽기 전용 data section: 문자열 상수 등 */
@@ -20,19 +21,30 @@ SECTIONS{
     .rodata : ALIGN(4096)
     {
         *(.rodata)
+        *(.rodata.*)
     }
 
     /* 읽기/쓰기 가능한 전역 변수 data section  */
     .data : ALIGN(4096)
     {
         *(.data)
+        *(.data.*)
     }
 
     /* 초기화 x 전역 변수 및 stack region */
     .bss : ALIGN(4096)
     {
         *(.bss)
+        *(.bss.*)
+        *(COMMON)
         /* Block Started by Symbol */
+    }
+    
+    /DISCARD/ :
+    {
+        *(.comment)
+        *(.eh_frame)
+        *(.note*)
     }
 }
 /* 
