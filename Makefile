@@ -31,7 +31,7 @@ TARGET = kernel.bin
 ISO_TARGET = aios.iso
 
 OBJECTS = $(BUILD_DIR)/boot.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/keyboard.o \
-	$(BUILD_DIR)/idt.o $(BUILD_DIR)/pic.o $(BUILD_DIR)/isr.o
+	$(BUILD_DIR)/idt.o $(BUILD_DIR)/pic.o $(BUILD_DIR)/isr.o $(BUILD_DIR)/arena.o
 
 .PHONY: all run clean
 
@@ -58,6 +58,12 @@ $(BUILD_DIR)/pic.o: boot/pic.c boot/pic.h
 $(BUILD_DIR)/isr.o: boot/isr.S
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c boot/isr.S -o $(BUILD_DIR)/isr.o
+
+# arena를 위한 rule
+$(BUILD_DIR)/arena.o: kernel/arena.c kernel/arena.h
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c kernel/arena.c -o $(BUILD_DIR)/arena.o
+
 
 # keyboard를 위한 rule
 $(BUILD_DIR)/keyboard.o: kernel/keyboard.c kernel/keyboard.h boot/pic.h
