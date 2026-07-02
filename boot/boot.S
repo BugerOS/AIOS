@@ -81,8 +81,22 @@ start_64:
     // c abi를 위해서 스택을 16 바이트로 정렬
     andq $-16, %rsp
 
+    // x87 및 SSE 사용 준비
+    movq %cr0, %rax
+    andq $-13, %rax
+    orq $0x02, %rax
+    movq %rax, %cr0
+
+    // os가 sse 상태와 예외를 지원함을 cpu에 알림
+    movq %cr4, %rax
+    orq $0x600, %rax
+    movq %rax, %cr4
+    
+    // x87 fpu 초기화
+    fninit
+
     // 초기 frame pointer는 0
-    xorq %rbp, %rbp
+    // xorq %rbp, %rbp
 
     call kernel_main
 

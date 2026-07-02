@@ -7,11 +7,24 @@ CC = gcc
 LD = ld
 
 # 컴파일 옵션
-CFLAGS = -m64 -nostdlib -fno-builtin -ffreestanding \
-	-O2 -Wall -fno-stack-protector -fno-pie -fno-pic \
-	-mno-red-zone -fno-unwind-tables -fno-asynchronous-unwind-tables \
-	-fno-tree-loop-distribute-patterns -mgeneral-regs-only \
-	-Wextra
+
+COMMON_CFLAGS = -m64 -nostdlib -fno-builtin -ffreestanding \
+	-O2 -Wall -Wextra \
+	-fno-stack-protector -fno-pie -fno-pic \
+	-mno-red-zone \
+	-fno-unwind-tables -fno-asynchronous-unwind-tables \
+	-fno-tree-loop-distribute-patterns
+
+IRQ_CFLAGS = $(COMMON_CFLAGS) -mgeneral-regs-only
+
+MATRIX_CFLAGS = $(COMMON_CFLAGS) -msse2 -mfpmath=sse
+
+CFLAGS = $(COMMON_CFLAGS)
+# CFLAGS = -m64 -nostdlib -fno-builtin -ffreestanding \
+# 	-O2 -Wall -fno-stack-protector -fno-pie -fno-pic \
+# 	-mno-red-zone -fno-unwind-tables -fno-asynchronous-unwind-tables \
+# 	-fno-tree-loop-distribute-patterns -msoft-float -mno-sse \
+# 	-Wextra -mfpmath=387
 # -m64: 64 bit 기계어 생성
 # -nostdlib: printf 같은 호스트 os 표준 라이브러리 차단
 # -fno-builtin: GCC가 함수를 자기 마음대로 최적화하는 것 금지
@@ -31,7 +44,8 @@ TARGET = kernel.bin
 ISO_TARGET = aios.iso
 
 OBJECTS = $(BUILD_DIR)/boot.o $(BUILD_DIR)/kernel.o $(BUILD_DIR)/keyboard.o \
-	$(BUILD_DIR)/idt.o $(BUILD_DIR)/pic.o $(BUILD_DIR)/isr.o $(BUILD_DIR)/arena.o
+	$(BUILD_DIR)/idt.o $(BUILD_DIR)/pic.o $(BUILD_DIR)/isr.o $(BUILD_DIR)/arena.o \
+	$(BUILD_DIR)/matrix.o
 
 .PHONY: all run clean
 
@@ -64,11 +78,15 @@ $(BUILD_DIR)/arena.o: kernel/arena.c kernel/arena.h
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c kernel/arena.c -o $(BUILD_DIR)/arena.o
 
+# matrix를 위한 rule
+$(BUILD_DIR)/matrix.o: kernel/matrix.c kernel/matrix.h kernel/arena.h
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(MATRIX_CFLAGS) -c kernel/matrix.c -o $(BUILD_DIR)/matrix.o
 
 # keyboard를 위한 rule
 $(BUILD_DIR)/keyboard.o: kernel/keyboard.c kernel/keyboard.h boot/pic.h
 	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c kernel/keyboard.c -o $(BUILD_DIR)/keyboard.o
+	$(CC) $(IRQ_CFLAGS) -c kernel/keyboard.c -o $(BUILD_DIR)/keyboard.o
 
 # 링커(linker.ld)를 통해서 하나의 kernel binary로 통합 rule
 # 링킹 타겟 룰도 idt.o와 pic.o를 결합하도록
